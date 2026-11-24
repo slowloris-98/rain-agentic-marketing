@@ -5,21 +5,18 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from . import db, integrations, orchestrator, settings
+from . import crm, db, integrations, orchestrator, settings
 
 
 @asynccontextmanager
 async def lifespan(_app):
     db.init_db()
-    with db.session() as s:
-        if not s.scalar(select(func.count(db.Tenant.id))):
-            orchestrator.seed_tenant()
     task = asyncio.create_task(_ticker()) if settings.TICK_SECONDS > 0 else None
     yield
     if task:
@@ -54,10 +51,9 @@ def login(body: Login):
     u = settings.USERS.get(body.email)
     if not u or u["password"] != body.password:
         raise HTTPException(401, "Invalid credentials")
-    claims = {"sub": body.email, "role": u["role"], "tenant_id": u["tenant_id"],
+    claims = {"sub": body.email, "role": u["role"], "crm_id": u["crm_id"],
               "exp": datetime.now(timezone.utc) + timedelta(hours=12)}
-    return {"token": jwt.encode(claims, settings.JWT_SECRET, algorithm="HS256"), "role": u["role"],
-            "tenant_id": u["tenant_id"]}
+    return {"token": jwt.encode(claims, settings.JWT_SECRET, algorithm="HS256"), "role": u["role"]}
 
 
 def _decode(token: str) -> dict:
@@ -80,16 +76,20 @@ def admin(u: dict = Depends(user)) -> dict:
     return u
 
 
-def tenant(u: dict = Depends(user), tenant_id: int = Query(1)) -> int:
-    """Clients are pinned to their own tenant; admins may pick one."""
-    return u["tenant_id"] if u["role"] == "client" else tenant_id
+def _scope(u: dict, tenant_id: int) -> int:
+    """Clients always see their CRM customer's latest run (0 = none yet); admins pick any run."""
+    return db.latest_run(u["crm_id"]) if u["role"] == "client" else tenant_id
+
+
+def tenant(u: dict = Depends(user), tenant_id: int = Query(0)) -> int:
+    return _scope(u, tenant_id)
 
 
 # ---------------------------------------------------------------- SSE
 @app.get("/stream")
-async def stream(token: str, tenant_id: int = 1):
+async def stream(token: str, tenant_id: int = 0):
     u = _decode(token)  # EventSource can't send headers, so the token rides in the query
-    tid = u["tenant_id"] if u["role"] == "client" else tenant_id
+    tid = _scope(u, tenant_id)
     q = orchestrator.subscribe()
 
     async def gen():
@@ -116,11 +116,60 @@ def _d(o) -> dict:
     return {c.name: getattr(o, c.name) for c in o.__table__.columns}
 
 
+@app.get("/admin/customers")
+def customers(_=Depends(admin)):
+    """Customer banks / credit unions from the CRM (static stub for now)."""
+    return crm.list_customers()
+
+
+class StartCampaign(BaseModel):
+    customer_id: str
+    goal: str = Field(min_length=5, max_length=1000)
+    daily_budget: float | None = Field(default=None, gt=0, le=100_000)
+    weeks: int | None = Field(default=None, ge=1, le=52)
+    days: int | None = Field(default=None, ge=1, le=365)
+
+
+def _plan_in_background(tid: int) -> None:
+    try:
+        orchestrator.submit_brief(tid)
+    except Exception as e:  # surface failures instead of leaving the run stuck in "planning"
+        db.save_run_state(tid, phase="error")
+        orchestrator.log_decision(tid, 0, "orchestrator", {"reasoning": f"Planning failed: {e}"}, {})
+
+
+@app.post("/admin/campaigns/start")
+def start_campaign(body: StartCampaign, tasks: BackgroundTasks, _=Depends(admin)):
+    """Create a new run for a CRM customer and plan it in the background so the UI can watch live."""
+    try:
+        tid = orchestrator.create_run(body.customer_id, body.goal, body.daily_budget, body.weeks, body.days)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    tasks.add_task(_plan_in_background, tid)
+    return {"tenant_id": tid}
+
+
+@app.get("/admin/tenants")
+def tenants(_=Depends(admin)):
+    with db.session() as s:
+        rows = s.execute(select(db.Tenant, db.RunState).join(db.RunState, db.RunState.tenant_id == db.Tenant.id)
+                         .order_by(db.Tenant.id.desc())).all()
+        return [{"id": t.id, "name": t.name, "crm_id": t.crm_id, "goal": (r.state or {}).get("brief", {}).get("goal"),
+                 "phase": r.phase, "day": r.day} for t, r in rows]
+
+
 @app.get("/admin/state")
 def admin_state(tid: int = Depends(tenant), _=Depends(admin)):
-    rs = db.run_state(tid)
+    with db.session() as s:
+        rs = s.get(db.RunState, tid)
+    if rs is None:
+        if tid == 0:
+            return None  # no run selected yet (fresh install)
+        raise HTTPException(404, "Unknown run")
+    st = rs.state or {}
     return {"day": rs.day, "phase": rs.phase, "killed": rs.killed, "paused_agents": rs.paused_agents,
-            "agents": orchestrator.AGENTS, "plan": (rs.state or {}).get("plan"), "mode": settings.MODE,
+            "agents": orchestrator.AGENTS, "running_agent": orchestrator.CURRENT.get(tid), "plan": st.get("plan"), "brief": st.get("brief"),
+            "customer": st.get("customer"), "mode": settings.MODE,
             "llm": bool(settings.ANTHROPIC_API_KEY),
             "integrations": {"google": "live" if integrations.google.configured else "stub",
                              "meta": "live" if integrations.meta.configured else "stub"}}
@@ -130,12 +179,6 @@ def admin_state(tid: int = Depends(tenant), _=Depends(admin)):
 def decisions(tid: int = Depends(tenant), _=Depends(admin), limit: int = 200, agent: str | None = None):
     where = [db.AgentDecision.agent == agent] if agent else []
     return [_d(x) for x in db.rows(db.AgentDecision, tid, *where, order=db.AgentDecision.id.desc(), limit=limit)]
-
-
-@app.post("/admin/brief")
-def brief(body: dict, tid: int = Depends(tenant), _=Depends(admin)):
-    s = orchestrator.submit_brief(tid, body or None)
-    return {"plan": s["plan"], "creatives": len(s["creatives"])}
 
 
 @app.get("/admin/approvals")
@@ -234,8 +277,10 @@ def kpis(tid: int = Depends(tenant)):
         members = dict(s.execute(select(db.Account.member, func.count()).where(db.Account.tenant_id == tid)
                                  .group_by(db.Account.member)).all())
         t = s.get(db.Tenant, tid)
+        rs = s.get(db.RunState, tid)
     return {
-        "tenant_id": tid, "tenant": t.name if t else None, "day": db.run_state(tid).day,
+        "tenant_id": tid, "tenant": t.name if t else None, "day": rs.day if rs else 0,
+        "goal": (rs.state or {}).get("brief", {}).get("goal") if rs else None,
         "new_accounts": a["accounts"], "new_deposits": round(a["deposits"], 2),
         "avg_balance": round(a["deposits"] / a["accounts"], 2) if a["accounts"] else 0,
         "cost_per_1k_deposits": round(a["spend"] / (a["deposits"] / 1000), 2) if a["deposits"] else 0,

@@ -6,10 +6,11 @@ with the SQLite checkpointer replacing run_state.state. Node functions stay unch
 """
 import asyncio
 import json
+import math
 import threading
 from typing import Callable
 
-from . import db, sim
+from . import crm, db, sim
 from .agents.allocator import allocator
 from .agents.compliance import compliance
 from .agents.core_feed import core_feed, simulate_day, upload_conversions
@@ -27,6 +28,7 @@ WEEKLY = [rollup, reflection, reporter]
 TRANSIENT = {"today", "new_accounts", "week_stats"}  # not checkpointed
 
 _lock = threading.Lock()
+CURRENT: dict[int, str | None] = {}  # tenant_id -> agent currently executing (for the live agent map)
 
 # ---------------------------------------------------------------- live event bus (SSE)
 _subscribers: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
@@ -68,7 +70,13 @@ def run(nodes: list[Callable], state: CycleState, paused: list[str] | None = Non
         if name in (paused or []):
             log_decision(state["tenant_id"], state.get("day", 0), name, {"reasoning": "Skipped: agent paused."}, {})
             continue
-        out = node(state)
+        tid = state["tenant_id"]
+        CURRENT[tid] = name
+        publish({"type": "agent_start", "tenant_id": tid, "agent": name})
+        try:
+            out = node(state)
+        finally:
+            CURRENT[tid] = None
         log = out.pop("_log", {})
         state.update(out)
         log_decision(state["tenant_id"], state.get("day", 0), name, log, out)
@@ -90,32 +98,38 @@ def _save(tenant_id: int, state: CycleState, **fields) -> None:
 
 
 # ---------------------------------------------------------------- public API
-def seed_tenant(name="La Cap Federal Credit Union", assets_musd=800, branches=15, seed=7) -> int:
+def create_run(customer_id: str, goal: str, daily_budget: float | None = None, weeks: int | None = None,
+               days: int | None = None) -> int:
+    """Start a new campaign run (tenant) for a CRM customer. The CRM record is snapshotted into
+    state so every agent uses the same rates/disclosures for the whole run."""
+    customer = crm.get_customer(customer_id)  # KeyError for unknown ids
+    seed = sim._h(customer_id) % 10000        # same bank -> same simulated market across runs
+    brief = {
+        "goal": goal.strip(),
+        "daily_budget": float(daily_budget or customer["default_daily_budget"]),
+        "days": int(days or (weeks or customer["default_weeks"]) * 7),
+        "customer_id": customer_id, "client": customer["name"],
+    }
+    brief["weeks"] = max(1, math.ceil(brief["days"] / 7))
     with db.session() as s:
-        t = db.Tenant(name=name, assets_musd=assets_musd, branches=branches, goal="deposits", seed=seed)
+        t = db.Tenant(name=customer["name"], crm_id=customer_id, assets_musd=customer["assets_musd"],
+                      branches=customer["branches"], goal=brief["goal"][:60], seed=seed)
         s.add(t)
         s.flush()
         tid = t.id
         for k in sim.all_arm_keys():
             p, c, a, g = k.split("|")
             s.add(db.Arm(tenant_id=tid, key=k, product=p, channel=c, audience=a, geo=g, active=False))
-        s.add(db.RunState(tenant_id=tid, state={"tenant_id": tid, "seed": seed}, paused_agents=[]))
+        s.add(db.RunState(tenant_id=tid, phase="planning", paused_agents=[],
+                          state={"tenant_id": tid, "seed": seed, "customer": customer, "brief": brief}))
+    publish({"type": "phase", "tenant_id": tid, "phase": "planning"})
     return tid
 
 
-DEFAULT_BRIEF = {
-    "client": "La Cap Federal Credit Union", "assets": "$800M", "branches": 15,
-    "goal": "Grow core deposits over the next quarter",
-    "products": ["checking", "savings", "cd", "money_market"],
-    "daily_budget": 2000, "weeks": 12,
-    "notes": "Wants more non-member households. Rates may fall next quarter, so CDs and money market are a priority.",
-}
-
-
-def submit_brief(tenant_id: int, brief: dict | None = None) -> CycleState:
+def submit_brief(tenant_id: int) -> CycleState:
+    """Run strategist -> creative -> compliance for a run created by create_run, then wait for approval."""
     with _lock:
         rs, state = _load(tenant_id)
-        state["brief"] = brief or DEFAULT_BRIEF
         state = run(SETUP, state, rs.paused_agents)
         _save(tenant_id, state, phase="awaiting_approval")
         publish({"type": "phase", "tenant_id": tenant_id, "phase": "awaiting_approval"})

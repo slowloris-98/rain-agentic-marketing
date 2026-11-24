@@ -32,6 +32,8 @@ def rollup(state: CycleState) -> dict:
         by_product[k.split("|")[0]] = by_product.get(k.split("|")[0], 0) + b
     stats = {
         "week": day // 7 + 1,
+        "goal": state.get("brief", {}).get("goal"),
+        "goal_interpretation": state.get("plan", {}).get("goal_interpretation"),
         "agentic": db.totals(tid, False, since), "baseline": db.totals(tid, True, since),
         "cumulative": {"agentic": db.totals(tid, False), "baseline": db.totals(tid, True)},
         "top_arms": arms[:5], "bottom_arms": arms[-5:],
@@ -54,12 +56,12 @@ def reflection(state: CycleState) -> dict:
             out.append(f"{top[0]['arm']} returned ${top[0]['value_per_$']:.2f} of deposit value per $1 this week; keep funding it.")
         if len(top) > 1:
             out.append(f"{top[1]['arm']} is a strong second at ${top[1]['value_per_$']:.2f}/$.")
-        if bot:
+        if len(top) > 2 and bot and bot[-1]["arm"] not in {x["arm"] for x in top[:2]}:  # skip when arms overlap
             out.append(f"{bot[-1]['arm']} returned only ${bot[-1]['value_per_$']:.2f}/$; keep it at the floor unless it improves.")
         if b["value"]:
             out.append(f"Agentic split earned {a['value'] / b['value'] - 1:+.0%} value vs the fixed split this week.")
         best_p = max(ws["budget_by_product"], key=ws["budget_by_product"].get) if ws["budget_by_product"] else None
-        if best_p:
+        if best_p and len(ws["budget_by_product"]) > 1:
             out.append(f"Budget is concentrating in {best_p}; few large-balance accounts beat many small ones per dollar.")
         return {"lessons": out[:5]}
 

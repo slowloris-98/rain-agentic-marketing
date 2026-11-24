@@ -1,0 +1,289 @@
+[
+  {
+    "id": "acme-ccu",
+    "name": "Acme Community Credit Union",
+    "institution_type": "credit_union",
+    "assets_musd": 800,
+    "branches": 15,
+    "region": "Central Valley (stub region)",
+    "brand_voice": "Warm, plain and local. Speak to members as neighbors. No exclamation marks in headlines. Never name a competitor.",
+    "insurer_disclosure": "Federally insured by NCUA.",
+    "default_daily_budget": 2000,
+    "default_weeks": 12,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "Rewards Checking",
+        "apy": 0.5,
+        "min_balance": 0,
+        "monthly_fee": 0,
+        "extra": "Rate may change after account is opened."
+      },
+      "savings": {
+        "name": "High-Yield Savings",
+        "apy": 4.1,
+        "min_balance": 100,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "12-Month Certificate",
+        "apy": 4.35,
+        "min_balance": 1000,
+        "monthly_fee": 0,
+        "extra": "Penalty may be imposed for early withdrawal."
+      },
+      "money_market": {
+        "name": "Money Market",
+        "apy": 3.75,
+        "min_balance": 2500,
+        "monthly_fee": 10,
+        "extra": "Fee waived with $2,500 average daily balance. Rate is variable."
+      }
+    }
+  },
+  {
+    "id": "summit-ridge-bank",
+    "name": "Summit Ridge Bank",
+    "institution_type": "bank",
+    "assets_musd": 2100,
+    "branches": 32,
+    "region": "Mountain West (stub region)",
+    "brand_voice": "Confident and straightforward. Short sentences, concrete benefits. Professional, never pushy.",
+    "insurer_disclosure": "Member FDIC.",
+    "default_daily_budget": 3500,
+    "default_weeks": 12,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "Summit Checking",
+        "apy": 0.25,
+        "min_balance": 25,
+        "monthly_fee": 5,
+        "extra": "Monthly fee waived with direct deposit."
+      },
+      "savings": {
+        "name": "Summit Savings Plus",
+        "apy": 3.9,
+        "min_balance": 500,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "9-Month CD Special",
+        "apy": 4.5,
+        "min_balance": 5000,
+        "monthly_fee": 0,
+        "extra": "Penalty may be imposed for early withdrawal."
+      },
+      "money_market": {
+        "name": "Premier Money Market",
+        "apy": 4.0,
+        "min_balance": 10000,
+        "monthly_fee": 15,
+        "extra": "Fee waived with $10,000 average daily balance. Rate is variable."
+      }
+    }
+  },
+  {
+    "id": "pinecrest-tcu",
+    "name": "Pinecrest Teachers Credit Union",
+    "institution_type": "credit_union",
+    "assets_musd": 250,
+    "branches": 4,
+    "region": "Lakes District (stub region)",
+    "brand_voice": "Friendly and encouraging, for educators and their families. Plain words, no hype.",
+    "insurer_disclosure": "Federally insured by NCUA.",
+    "default_daily_budget": 800,
+    "default_weeks": 8,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "Classroom Checking",
+        "apy": 0.75,
+        "min_balance": 0,
+        "monthly_fee": 0,
+        "extra": "Membership open to educators and their families."
+      },
+      "savings": {
+        "name": "Summer Saver",
+        "apy": 4.25,
+        "min_balance": 5,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "6-Month Certificate",
+        "apy": 4.4,
+        "min_balance": 500,
+        "monthly_fee": 0,
+        "extra": "Penalty may be imposed for early withdrawal."
+      }
+    }
+  },
+  {
+    "id": "harborline-bank",
+    "name": "Harborline Bank",
+    "institution_type": "bank",
+    "assets_musd": 5400,
+    "branches": 58,
+    "region": "Coastal Northeast (stub region)",
+    "brand_voice": "Steady and reassuring. Emphasize long-standing stability and clear terms. Never use slang.",
+    "insurer_disclosure": "Member FDIC.",
+    "default_daily_budget": 5000,
+    "default_weeks": 12,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "Harbor Everyday Checking",
+        "apy": 0.1,
+        "min_balance": 100,
+        "monthly_fee": 8,
+        "extra": "Monthly fee waived with $1,500 minimum daily balance."
+      },
+      "savings": {
+        "name": "Harbor Savings",
+        "apy": 3.8,
+        "min_balance": 250,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "13-Month CD",
+        "apy": 4.45,
+        "min_balance": 2500,
+        "monthly_fee": 0,
+        "extra": "Penalty may be imposed for early withdrawal."
+      },
+      "money_market": {
+        "name": "Harbor Money Market",
+        "apy": 3.95,
+        "min_balance": 5000,
+        "monthly_fee": 12,
+        "extra": "Fee waived with $5,000 average daily balance. Rate is variable."
+      }
+    }
+  },
+  {
+    "id": "brightpath-digital",
+    "name": "BrightPath Digital Bank",
+    "institution_type": "bank",
+    "assets_musd": 1200,
+    "branches": 0,
+    "region": "Nationwide, online only (stub region)",
+    "brand_voice": "Modern, upbeat and concise. Talk about doing banking from your phone. Avoid jargon.",
+    "insurer_disclosure": "Member FDIC.",
+    "default_daily_budget": 3000,
+    "default_weeks": 8,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "BrightPath Checking",
+        "apy": 1.0,
+        "min_balance": 0,
+        "monthly_fee": 0,
+        "extra": "No minimum balance. Rate may change after account is opened."
+      },
+      "savings": {
+        "name": "BrightPath High-Yield Savings",
+        "apy": 4.3,
+        "min_balance": 0,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "11-Month No-Penalty CD",
+        "apy": 4.2,
+        "min_balance": 500,
+        "monthly_fee": 0,
+        "extra": "No penalty for withdrawal after the first 7 days."
+      }
+    }
+  },
+  {
+    "id": "cedar-falls-fcu",
+    "name": "Cedar Falls Federal Credit Union",
+    "institution_type": "credit_union",
+    "assets_musd": 140,
+    "branches": 3,
+    "region": "Northern Plains small towns (stub region)",
+    "brand_voice": "Down-to-earth and neighborly. Mention local roots. Keep it simple and honest.",
+    "insurer_disclosure": "Federally insured by NCUA.",
+    "default_daily_budget": 500,
+    "default_weeks": 8,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "Hometown Checking",
+        "apy": 0.3,
+        "min_balance": 0,
+        "monthly_fee": 0,
+        "extra": "Rate may change after account is opened."
+      },
+      "savings": {
+        "name": "Share Savings",
+        "apy": 3.5,
+        "min_balance": 25,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "18-Month Share Certificate",
+        "apy": 4.25,
+        "min_balance": 1000,
+        "monthly_fee": 0,
+        "extra": "Penalty may be imposed for early withdrawal."
+      },
+      "money_market": {
+        "name": "Money Market Share",
+        "apy": 3.4,
+        "min_balance": 2000,
+        "monthly_fee": 0,
+        "extra": "Rate is variable."
+      }
+    }
+  },
+  {
+    "id": "riverbend-community-bank",
+    "name": "Riverbend Community Bank",
+    "institution_type": "bank",
+    "assets_musd": 950,
+    "branches": 18,
+    "region": "River Valley Midwest (stub region)",
+    "brand_voice": "Practical and community-minded. Highlight local decision making and small-business ties.",
+    "insurer_disclosure": "Member FDIC.",
+    "default_daily_budget": 1500,
+    "default_weeks": 12,
+    "rates_as_of": "2026-11-01",
+    "products": {
+      "checking": {
+        "name": "Community Checking",
+        "apy": 0.2,
+        "min_balance": 50,
+        "monthly_fee": 4,
+        "extra": "Monthly fee waived with e-statements."
+      },
+      "savings": {
+        "name": "Riverbend Savings",
+        "apy": 3.7,
+        "min_balance": 100,
+        "monthly_fee": 0,
+        "extra": "Rate is variable and may change after account is opened."
+      },
+      "cd": {
+        "name": "7-Month CD Special",
+        "apy": 4.55,
+        "min_balance": 1000,
+        "monthly_fee": 0,
+        "extra": "Penalty may be imposed for early withdrawal."
+      },
+      "money_market": {
+        "name": "Riverbend Money Market",
+        "apy": 3.85,
+        "min_balance": 2500,
+        "monthly_fee": 10,
+        "extra": "Fee waived with $2,500 average daily balance. Rate is variable."
+      }
+    }
+  }
+]

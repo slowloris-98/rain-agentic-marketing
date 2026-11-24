@@ -21,6 +21,8 @@ export default function Client() {
         <span className="text-sm text-neutral-600 mr-3">Day {k?.day ?? 0} · powered by RAIN</span>
         <button className="btn" onClick={() => { localStorage.clear(); location.href = "/login"; }}>Sign out</button>
       </header>
+      {k && !k.tenant && <p className="card text-sm">No campaign has been started for you yet. RAIN will set one up shortly.</p>}
+      {k?.goal && <p className="text-sm text-neutral-600">Current campaign goal: {k.goal}</p>}
 
       <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Kpi label="New accounts" value={num(k?.new_accounts)} />

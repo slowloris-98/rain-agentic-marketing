@@ -26,6 +26,7 @@ class Tenant(Base):
     __tablename__ = "tenants"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
+    crm_id: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)  # CRM customer id
     assets_musd: Mapped[float] = mapped_column(Float, default=0)
     branches: Mapped[int] = mapped_column(Integer, default=0)
     goal: Mapped[str] = mapped_column(String(60), default="deposits")
@@ -210,7 +211,21 @@ def arms(tenant_id: int, active_only=True) -> list[Arm]:
 
 
 def lessons(tenant_id: int, limit=10) -> list[str]:
-    return [l.text for l in rows(Lesson, tenant_id, order=Lesson.id.desc(), limit=limit)]
+    """Newest lessons from every run of the same CRM customer (memory carries across campaigns)."""
+    with session() as s:
+        t = s.get(Tenant, tenant_id)
+        if t is None or not t.crm_id:
+            ids = [tenant_id]
+        else:
+            ids = list(s.scalars(select(Tenant.id).where(Tenant.crm_id == t.crm_id)))
+        return list(s.scalars(select(Lesson.text).where(Lesson.tenant_id.in_(ids))
+                              .order_by(Lesson.id.desc()).limit(limit)))
+
+
+def latest_run(crm_id: str) -> int:
+    """Newest tenant (run) for a CRM customer, or 0 when there is none yet."""
+    with session() as s:
+        return s.scalar(select(func.max(Tenant.id)).where(Tenant.crm_id == crm_id)) or 0
 
 
 def run_state(tenant_id: int) -> RunState:

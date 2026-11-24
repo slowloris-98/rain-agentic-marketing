@@ -23,7 +23,7 @@ export async function api<T = any>(path: string, init: RequestInit = {}): Promis
 export const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) });
 
 /** Fetch a set of endpoints and refetch them whenever the backend pushes an SSE event. */
-export function useLive<T extends Record<string, any>>(paths: Record<keyof T, string>) {
+export function useLive<T extends Record<string, any>>(paths: Record<keyof T, string>, streamQuery = "") {
   const [data, setData] = useState<Partial<T>>({});
   const [tick, setTick] = useState(0);
   const load = useCallback(async () => {
@@ -41,14 +41,14 @@ export function useLive<T extends Record<string, any>>(paths: Record<keyof T, st
   useEffect(() => {
     const t = token();
     if (!t) return;
-    const es = new EventSource(`${API}/stream?token=${encodeURIComponent(t)}`);
+    const es = new EventSource(`${API}/stream?token=${encodeURIComponent(t)}${streamQuery}`);
     let timer: ReturnType<typeof setTimeout> | null = null;
     es.onmessage = () => {
       // coalesce bursts (a simulated day emits ~5 events) into one refresh
       if (!timer) timer = setTimeout(() => { timer = null; setTick((x) => x + 1); }, 400);
     };
     return () => { es.close(); if (timer) clearTimeout(timer); };
-  }, []);
+  }, [streamQuery]);
 
   return { data, reload: load };
 }

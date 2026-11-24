@@ -1,6 +1,14 @@
+todo:
+
 - use a stub bank name not a real one
 - show the agent flow similar to as we have in nexusgtm
 - keep the admin dashboard minimal, currently it has a lot for knobs
 - add open ai and creative agent should be able to generate the image ads as well.
 - add option to write a brief goal and bank details in admin portal and then start the flow which can be monitored live.
 - The customer data like apr etc should be read from a source file.
+
+
+questions:
+
+- does rain have the actual account details like balance and geographic info from the banks?
+- how does rain know if a campaign worked correctly apart from the analytics from ad platforms. Does the client share that data from there end?

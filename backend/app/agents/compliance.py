@@ -5,8 +5,9 @@ from .. import db, settings
 from ..state import CycleState
 
 
-def check(c: dict, rates: dict, policy: dict) -> list[dict]:
-    p = rates["products"][c["product"]]
+def check(c: dict, customer: dict, policy: dict) -> list[dict]:
+    """Rates and required disclosures come from the customer's CRM record."""
+    p = customer["products"][c["product"]]
     apy = f"{p['apy']:.2f}"
     copy = f"{c['headline']} {c['body']}"
     full = f"{copy} {c['disclosure']}"
@@ -15,12 +16,14 @@ def check(c: dict, rates: dict, policy: dict) -> list[dict]:
         f.append({"severity": "error", "rule": "Reg DD 1030.8", "msg": f"APY {apy}% must be stated as 'APY'."})
     for m in re.findall(r"(\d+(?:\.\d+)?)\s*%", full):
         if abs(float(m) - p["apy"]) > 1e-9:
-            f.append({"severity": "error", "rule": "rate source", "msg": f"Rate {m}% does not match rates.json ({apy}%)."})
+            f.append({"severity": "error", "rule": "rate source", "msg": f"Rate {m}% does not match the CRM rate ({apy}%)."})
     if "Minimum balance" not in c["disclosure"]:
         f.append({"severity": "error", "rule": "Reg DD 1030.8", "msg": "Minimum balance to obtain the APY is missing."})
     if "fee" not in c["disclosure"].lower():
         f.append({"severity": "error", "rule": "Reg DD 1030.8", "msg": "Fee disclosure missing."})
-    if rates["as_of"] not in c["disclosure"]:
+    if customer["insurer_disclosure"] not in c["disclosure"]:
+        f.append({"severity": "error", "rule": "deposit insurance", "msg": f"Missing '{customer['insurer_disclosure']}'."})
+    if customer["rates_as_of"] not in c["disclosure"]:
         f.append({"severity": "error", "rule": "Reg DD 1030.8", "msg": "Rate 'accurate as of' date missing."})
     for w in policy["banned_claims"]:
         if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", copy, re.I):
@@ -32,10 +35,10 @@ def check(c: dict, rates: dict, policy: dict) -> list[dict]:
 
 def compliance(state: CycleState) -> dict:
     tid = state["tenant_id"]
-    rates, policy = settings.rates(), settings.policy()
+    customer, policy = state["customer"], settings.policy()
     out = []
     for c in state["creatives"]:
-        findings = check(c, rates, policy)
+        findings = check(c, customer, policy)
         ok = not any(x["severity"] == "error" for x in findings)
         out.append({**c, "findings": findings, "status": "pending_approval" if ok else "failed_compliance"})
     with db.session() as s:  # replace any previous un-decided queue

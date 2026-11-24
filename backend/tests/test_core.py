@@ -64,18 +64,31 @@ def test_guardrails():
         assert sum(v for k, v in out.items() if k.endswith(g)) >= 250 - 1
 
 
+def test_crm_records():
+    from app import crm
+    cs = crm.list_customers()
+    assert len(cs) >= 3 and len({c["id"] for c in cs}) == len(cs)
+    for c in cs:
+        assert {"id", "name", "institution_type", "insurer_disclosure", "rates_as_of", "products",
+                "default_daily_budget", "default_weeks", "brand_voice"} <= set(c)
+        assert set(c["products"]) <= set(sim.PRODUCTS)
+        for p in c["products"].values():
+            assert {"name", "apy", "min_balance", "monthly_fee", "extra"} <= set(p)
+
+
 def test_compliance():
-    rates, policy = settings.rates(), settings.policy()
-    good = {"product": "cd", "channel": "google", "headline": "12-Month CD: 4.35% APY", "body": "Lock in today.",
-            "disclosure": disclosure("cd")}
-    assert not [f for f in check(good, rates, policy) if f["severity"] == "error"]
+    from app import crm
+    customer, policy = crm.get_customer("acme-ccu"), settings.policy()
+    good = {"product": "cd", "channel": "google", "headline": "CD at 4.35% APY", "body": "Lock in today.",
+            "disclosure": disclosure(customer, "cd")}
+    assert not [f for f in check(good, customer, policy) if f["severity"] == "error"]
     bad_rate = {**good, "headline": "CD at 5.00% APY"}
-    assert any("does not match" in f["msg"] for f in check(bad_rate, rates, policy))
+    assert any("does not match" in f["msg"] for f in check(bad_rate, customer, policy))
     best = {**good, "body": "The best CD in town."}
-    assert any("best" in f["msg"] for f in check(best, rates, policy))
-    no_apy = {**good, "headline": "Great CD", "disclosure": "Federally insured."}
-    msgs = " ".join(f["msg"] for f in check(no_apy, rates, policy))
-    assert "APY" in msgs and "Minimum balance" in msgs
+    assert any("best" in f["msg"] for f in check(best, customer, policy))
+    no_apy = {**good, "headline": "Great CD", "disclosure": "Some text."}
+    msgs = " ".join(f["msg"] for f in check(no_apy, customer, policy))
+    assert "APY" in msgs and "Minimum balance" in msgs and "NCUA" in msgs
 
 
 def test_stub_payloads():
@@ -94,23 +107,68 @@ def test_stub_payloads():
     assert ge["conversionValue"] == 384.0 and ge["currency"] == "USD"
 
 
-def test_full_cycle_and_tenant_scoping():
+def _login(c, email, pw):
+    return {"Authorization": "Bearer " + c.post("/auth/login", json={"email": email, "password": pw}).json()["token"]}
+
+
+def _start_and_approve(c, admin, body):
+    tid = c.post("/admin/campaigns/start", json=body, headers=admin).json()["tenant_id"]
+    q = f"?tenant_id={tid}"
+    assert c.get("/admin/state" + q, headers=admin).json()["phase"] == "awaiting_approval"
+    creatives = c.get("/admin/approvals" + q, headers=admin).json()
+    pending = [x["id"] for x in creatives if x["status"] == "pending_approval"]
+    assert pending
+    assert c.post("/admin/approvals" + q, json={"approve": pending, "reject": []}, headers=admin).status_code == 200
+    return tid, q, creatives
+
+
+def test_goal_drives_plan_and_customer_facts():
+    from fastapi.testclient import TestClient
+    from app import crm, db
+    from app.main import app
+
+    bank = crm.get_customer("summit-ridge-bank")
+    with TestClient(app) as c:
+        admin = _login(c, "admin@rain", "admin")
+        assert c.post("/admin/campaigns/start", json={"customer_id": "nope", "goal": "grow deposits"},
+                      headers=admin).status_code == 404
+        tid, q, creatives = _start_and_approve(c, admin, {
+            "customer_id": "summit-ridge-bank", "goal": "Grow CDs among retirees near our branches",
+            "daily_budget": 1000, "days": 30})
+        st = c.get("/admin/state" + q, headers=admin).json()
+        plan = st["plan"]
+        assert plan["days"] == 30 and plan["weeks"] == 5 and st["running_agent"] is None
+        assert plan["products"] == ["cd"] and plan["audiences"] == ["55+"] and plan["geos"] == ["branch"]
+        assert all(a.product == "cd" and a.audience == "55+" and a.geo == "branch" for a in db.arms(tid))
+        text = " ".join(f"{x['headline']} {x['body']} {x['disclosure']}" for x in creatives)
+        assert "Summit Ridge Bank" in text and f"{bank['products']['cd']['apy']:.2f}% APY" in text
+        assert "Member FDIC." in text and "NCUA" not in text and "La Cap" not in text
+        assert c.post("/admin/controls" + q, json={"action": "run_days", "days": 3}, headers=admin).json()["ran"] == 3
+        split = c.get("/admin/allocator" + q, headers=admin).json()["split"]
+        for day in split:
+            assert abs(sum(v for k, v in day.items() if k in sim.PRODUCTS) - 1000) < 1
+
+
+def test_full_cycle_and_client_scoping():
     from fastapi.testclient import TestClient
     from app.main import app
 
     with TestClient(app) as c:
-        tok = lambda e, p: {"Authorization": "Bearer " + c.post("/auth/login", json={"email": e, "password": p}).json()["token"]}
-        admin, client = tok("admin@rain", "admin"), tok("client@lacap", "client")
-        assert c.post("/admin/brief", json={}, headers=admin).status_code == 200
-        pending = [x["id"] for x in c.get("/admin/approvals", headers=admin).json() if x["status"] == "pending_approval"]
-        assert pending
-        assert c.post("/admin/approvals", json={"approve": pending, "reject": []}, headers=admin).status_code == 200
-        r = c.post("/admin/controls", json={"action": "run_days", "days": 14}, headers=admin).json()
-        assert r["ran"] == 14
+        admin, client = _login(c, "admin@rain", "admin"), _login(c, "client@acme", "client")
+        tid, q, _ = _start_and_approve(c, admin, {"customer_id": "acme-ccu", "goal": "Grow core deposits this quarter"})
+        assert c.post("/admin/controls" + q, json={"action": "run_days", "days": 14}, headers=admin).json()["ran"] == 14
         k = c.get("/client/kpis", headers=client).json()
-        assert k["new_accounts"] > 0
+        assert k["tenant_id"] == tid and k["new_accounts"] > 0
         assert c.get("/client/reports", headers=client).json()
-        assert c.get("/admin/lessons", headers=admin).json()
-        # client cannot reach admin routes or another tenant
+        assert c.get("/admin/lessons" + q, headers=admin).json()
+        # a second Acme run starts with the first run's lessons (memory carries across campaigns)
+        tid2 = c.post("/admin/campaigns/start", json={"customer_id": "acme-ccu", "goal": "More checking accounts"},
+                      headers=admin).json()["tenant_id"]
+        state = c.get(f"/admin/decisions?tenant_id={tid2}&agent=strategist", headers=admin).json()[0]
+        assert state["inputs"]["lessons"]
+        # client follows its own latest run; it can't reach admin routes or another customer's run
+        assert c.get("/client/kpis", headers=client).json()["tenant_id"] == tid2
+        summit = c.post("/admin/campaigns/start", json={"customer_id": "summit-ridge-bank", "goal": "Grow savings"},
+                        headers=admin).json()["tenant_id"]
+        assert c.get(f"/client/kpis?tenant_id={summit}", headers=client).json()["tenant_id"] == tid2
         assert c.get("/admin/decisions", headers=client).status_code == 403
-        assert c.get("/client/kpis?tenant_id=2", headers=client).json()["tenant_id"] == 1

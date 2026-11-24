@@ -1,254 +1,370 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { PRODUCT_COLORS, api, post, usd, useLive } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { post, usd, useLive } from "@/lib/api";
+import { AdPreview, type Creative } from "@/components/AdPreview";
+import { AgentMap } from "@/components/AgentMap";
+import { Trail, type Decision } from "@/components/Trail";
+import { Block, Chip, DaysPicker, Spread, readPhase } from "@/components/ui";
 
-type Data = {
-  state: any; decisions: any[]; approvals: any[]; campaigns: any[]; allocator: any; lessons: any[]; policy: any;
-};
+type Data = { state: any; decisions: Decision[]; approvals: Creative[]; tenants: any[]; customers: any[] };
+
+const RUN_PRESETS = [1, 7, 30, 84];
+const LENGTH_PRESETS = [7, 14, 30, 56, 60, 84, 90]; // 56/84 = the CRM's 8- and 12-week defaults
 
 export default function Admin() {
+  const [tid, setTidState] = useState(0);
+  const [creating, setCreating] = useState(false);
+  useEffect(() => setTidState(Number(localStorage.getItem("tid") ?? 0)), []);
+  const setTid = (t: number) => { localStorage.setItem("tid", String(t)); setTidState(t); setCreating(false); };
+  const q = `?tenant_id=${tid}`;
   const { data, reload } = useLive<Data>({
-    state: "/admin/state", decisions: "/admin/decisions?limit=150", approvals: "/admin/approvals",
-    campaigns: "/admin/campaigns", allocator: "/admin/allocator", lessons: "/admin/lessons", policy: "/admin/policy",
-  });
-  const [busy, setBusy] = useState("");
+    state: `/admin/state${q}`, decisions: `/admin/decisions${q}&limit=400`, approvals: `/admin/approvals${q}`,
+    tenants: "/admin/tenants", customers: "/admin/customers",
+  }, `&tenant_id=${tid}`);
+  const tenants = data.tenants ?? [];
   const s = data.state;
 
-  async function act(label: string, fn: () => Promise<any>) {
-    setBusy(label);
-    try { await fn(); } catch (e) { alert(String(e)); }
-    setBusy("");
-    reload();
-  }
+  // Fall back to the newest run when nothing (or a run that no longer exists) is selected.
+  useEffect(() => {
+    // A tid above the newest listed id is a run we just created whose list refresh is still in flight.
+    if (tenants.length && !tenants.some((t) => t.id === tid) && tid <= tenants[0].id) setTidState(tenants[0].id);
+  }, [tenants, tid]);
+
+  const showForm = creating || (data.tenants !== undefined && !tenants.length);
 
   return (
-    <main className="max-w-[1400px] mx-auto p-6 space-y-4">
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold mr-auto">RAIN admin · La Cap Federal Credit Union</h1>
+    <div className="console">
+      <header className="systembar">
+        <p className="wordmark">RAIN</p>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Agentic marketing · admin</span>
+        <span className="spacer" />
         {s && (
-          <span className="text-sm text-neutral-600">
-            Day {s.day} · week {Math.floor(s.day / 7) + 1} · <b>{s.phase}</b>{s.killed && " · KILLED"} · mode {s.mode} ·
-            LLM {s.llm ? "on" : "templates"} · Google {s.integrations.google} · Meta {s.integrations.meta}
+          <span className="health">
+            <Chip tone={s.llm ? "good" : "neutral"}>{s.llm ? "LLM on" : "Template mode"}</Chip>
+            <Chip tone={s.integrations.google === "live" ? "good" : "neutral"}>Google {s.integrations.google}</Chip>
+            <Chip tone={s.integrations.meta === "live" ? "good" : "neutral"}>Meta {s.integrations.meta}</Chip>
           </span>
         )}
         <button className="btn" onClick={() => { localStorage.clear(); location.href = "/login"; }}>Sign out</button>
       </header>
 
-      <section className="card flex flex-wrap gap-2 items-center">
-        <span className="h !mb-0 mr-2">Controls</span>
-        <button className="btn btn-primary" disabled={!!busy} onClick={() => act("brief", () => post("/admin/brief", {}))}>
-          {busy === "brief" ? "Planning…" : "Submit La Cap brief"}
-        </button>
-        {[1, 7, 84].map((n) => (
-          <button key={n} className="btn" disabled={!!busy || s?.phase !== "running"}
-            onClick={() => act(`run${n}`, () => post("/admin/controls", { action: "run_days", days: n }))}>
-            {busy === `run${n}` ? "Running…" : `Run ${n} day${n > 1 ? "s" : ""}`}
-          </button>
-        ))}
-        {s?.killed
-          ? <button className="btn" onClick={() => act("resume", () => post("/admin/controls", { action: "resume" }))}>Resume</button>
-          : <button className="btn btn-danger" onClick={() => act("kill", () => post("/admin/controls", { action: "kill" }))}>Kill switch</button>}
-        <span className="ml-4 text-xs text-neutral-500">Pause agent:</span>
-        {s?.agents.map((a: string) => {
-          const paused = s.paused_agents.includes(a);
-          return (
-            <button key={a} className={`btn !px-2 !py-0.5 text-xs ${paused ? "!bg-amber-100" : ""}`}
-              onClick={() => act(a, () => post("/admin/controls", { action: paused ? "unpause" : "pause", agent: a }))}>
-              {paused ? "▶ " : "⏸ "}{a}
-            </button>
-          );
-        })}
-      </section>
+      <Rail tenants={tenants} tid={creating ? -1 : tid} onPick={setTid} onNew={() => setCreating(true)} />
 
-      {s?.phase === "awaiting_approval" && <ApprovalQueue items={data.approvals ?? []} onDone={reload} />}
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <section className="card xl:col-span-2">
-          <div className="h">Allocator · daily budget by product</div>
-          <BudgetChart split={data.allocator?.split ?? []} />
-        </section>
-        <section className="card">
-          <div className="h">Lessons memory</div>
-          <ul className="space-y-2 text-sm max-h-[300px] overflow-auto">
-            {(data.lessons ?? []).map((l) => (
-              <li key={l.id}><span className="text-neutral-500 text-xs mr-1">W{l.week}</span>{l.text}</li>
-            ))}
-            {!data.lessons?.length && <li className="text-neutral-500">Lessons appear after the first simulated week.</li>}
-          </ul>
-        </section>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <section className="card xl:col-span-2">
-          <div className="h">Arm posteriors · value per $ (mean ± 1 sd), today&apos;s budget</div>
-          <Posteriors rows={data.allocator?.posteriors ?? []} />
-        </section>
-        <section className="card space-y-4">
-          <div>
-            <div className="h">Campaigns (spend vs envelope)</div>
-            <table>
-              <thead><tr><th>Campaign</th><th>Platform</th><th className="num">Envelope/d</th><th className="num">Spend</th></tr></thead>
-              <tbody>
-                {(data.campaigns ?? []).map((c) => (
-                  <tr key={c.id}>
-                    <td>{c.name}<div className="text-xs text-neutral-500">{c.status}</div></td>
-                    <td className="text-xs break-all">{c.platform_id}</td>
-                    <td className="num">{usd(c.envelope)}</td>
-                    <td className="num">{usd(c.spend)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {data.policy && <Guardrails policy={data.policy} onSaved={reload} />}
-        </section>
-      </div>
-
-      <section className="card">
-        <div className="h">Live agent feed</div>
-        <div className="max-h-[520px] overflow-auto divide-y divide-neutral-100">
-          {(data.decisions ?? []).map((d) => (
-            <details key={d.id} className="py-1.5 text-sm">
-              <summary className="cursor-pointer">
-                <span className="text-neutral-500 text-xs w-28 inline-block">day {d.day} · {new Date(d.ts + "Z").toLocaleTimeString()}</span>
-                <b className="w-40 inline-block">{d.agent}</b>
-                {d.reasoning}
-              </summary>
-              <div className="grid md:grid-cols-2 gap-2 mt-1">
-                <pre className="text-xs bg-neutral-50 p-2 rounded overflow-auto max-h-64">inputs {JSON.stringify(d.inputs, null, 2)}</pre>
-                <pre className="text-xs bg-neutral-50 p-2 rounded overflow-auto max-h-64">output {JSON.stringify(d.output, null, 2)}</pre>
-              </div>
-            </details>
-          ))}
+      <main className="pane">
+        <div className="pane-inner">
+          {showForm && data.customers
+            ? <NewCampaign customers={data.customers} onCancel={tenants.length ? () => setCreating(false) : undefined}
+                onStarted={(id) => { setTid(id); reload(); }} />
+            : s
+              ? <RunView tid={tid} s={s} decisions={data.decisions ?? []} creatives={data.approvals ?? []} q={q} reload={reload} />
+              : <p className="empty">Loading…</p>}
         </div>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
 
-function ApprovalQueue({ items, onDone }: { items: any[]; onDone: () => void }) {
-  const queue = items.filter((c) => c.status === "pending_approval" || c.status === "failed_compliance");
-  const [sel, setSel] = useState<Set<number>>(new Set());
-  useEffect(() => {
-    setSel(new Set(queue.filter((c) => c.status === "pending_approval").map((c) => c.id)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length]);
-  const pending = queue.filter((c) => c.status === "pending_approval");
+// ------------------------------------------------------------------ rail
+function Rail({ tenants, tid, onPick, onNew }: { tenants: any[]; tid: number; onPick: (t: number) => void; onNew: () => void }) {
+  const active = tenants.filter((t) => t.phase === "planning" || t.phase === "awaiting_approval" || t.phase === "running");
+  const rest = tenants.filter((t) => !active.includes(t));
+  const row = (t: any) => {
+    const p = readPhase(t.phase);
+    return (
+      <button key={t.id} className="rail-row" aria-current={t.id === tid} onClick={() => onPick(t.id)}>
+        <div className="headline">
+          <span className="who">#{t.id} {t.name}</span>
+          <span className="cost">day {t.day}</span>
+        </div>
+        <div className="sub">
+          <span style={{ color: `var(--${p.tone === "live" ? "series-1" : p.tone === "attention" ? "serious" : p.tone === "fault" ? "critical" : p.tone === "good" ? "good" : "muted"})` }}>●</span>
+          <span className="state">{p.label} · {t.goal ?? ""}</span>
+        </div>
+      </button>
+    );
+  };
+  return (
+    <nav className="rail" aria-label="Campaign runs">
+      <div className="rail-top">
+        <button className="btn btn-primary w-full justify-center" onClick={onNew}>New campaign</button>
+      </div>
+      <div className="rail-scroll">
+        <section className="rail-section">
+          <h2>In flight <span className="count">{active.length}</span></h2>
+          {active.length ? active.map(row) : <p className="rail-empty">No run is in flight.</p>}
+        </section>
+        <section className="rail-section">
+          <h2>Finished / stopped <span className="count">{rest.length}</span></h2>
+          {rest.length ? rest.map(row) : <p className="rail-empty">None yet.</p>}
+        </section>
+      </div>
+    </nav>
+  );
+}
 
-  async function submit() {
-    await post("/admin/approvals", { approve: [...sel], reject: pending.filter((c) => !sel.has(c.id)).map((c) => c.id) });
-    onDone();
+// ------------------------------------------------------------------ one run
+function RunView({ tid, s, decisions, creatives, q, reload }:
+  { tid: number; s: any; decisions: Decision[]; creatives: Creative[]; q: string; reload: () => void }) {
+  const [busy, setBusy] = useState("");
+  const [runN, setRunN] = useState(7);
+  const [err, setErr] = useState("");
+  const phase = readPhase(s.phase, s.killed);
+  const c = s.customer ?? {};
+  const plan = s.plan;
+  const totalDays = plan?.days ?? s.brief?.days ?? (s.brief?.weeks ?? 0) * 7;
+  const running: string | null = s.running_agent ?? null;
+
+  async function act(label: string, fn: () => Promise<any>) {
+    setBusy(label); setErr("");
+    try { await fn(); } catch (e) { setErr(String(e)); }
+    setBusy(""); reload();
   }
 
   return (
-    <section className="card border-amber-300">
-      <div className="flex items-center mb-2">
-        <div className="h !mb-0 mr-auto">Approval queue · {pending.length} ads passed compliance</div>
-        <button className="btn btn-primary" onClick={submit}>Approve {sel.size} &amp; launch</button>
-      </div>
-      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-2">
-        {queue.map((c) => (
-          <label key={c.id} className={`border rounded p-2 text-sm block ${c.status === "failed_compliance" ? "bg-red-50" : ""}`}>
-            <div className="flex gap-2 items-start">
-              <input type="checkbox" disabled={c.status !== "pending_approval"} checked={sel.has(c.id)}
-                onChange={(e) => { const n = new Set(sel); e.target.checked ? n.add(c.id) : n.delete(c.id); setSel(n); }} />
-              <div>
-                <div className="text-xs text-neutral-500">{c.product} · {c.channel}</div>
-                <div className="font-semibold">{c.headline}</div>
-                <div>{c.body}</div>
-                <div className="text-[11px] text-neutral-500 mt-1">{c.disclosure}</div>
-                {c.findings.map((f: any, i: number) => (
-                  <div key={i} className={`text-xs mt-1 ${f.severity === "error" ? "text-red-700" : "text-amber-700"}`}>
-                    {f.severity === "error" ? "✖" : "⚠"} {f.rule}: {f.msg}
-                  </div>
-                ))}
-                {!c.findings.length && <div className="text-xs mt-1 text-green-800">✔ Reg DD + claims checks passed</div>}
-              </div>
-            </div>
-          </label>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function BudgetChart({ split }: { split: any[] }) {
-  if (!split.length) return <p className="text-sm text-neutral-500">No allocations yet: submit a brief, approve, then run days.</p>;
-  const last = split[split.length - 1];
-  const total = Object.keys(PRODUCT_COLORS).reduce((a, k) => a + (last[k] ?? 0), 0);
-  return (
     <>
-      <p className="text-sm text-neutral-600 mb-2">
-        Exploration today: <b>{total ? Math.round((last.explore / total) * 100) : 0}%</b> of {usd(total)}/day
-      </p>
-      <ResponsiveContainer width="100%" height={260}>
-        <AreaChart data={split} margin={{ left: 8, right: 8 }}>
-          <CartesianGrid stroke="#ecebe7" vertical={false} />
-          <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="#a3a29d" />
-          <YAxis tickFormatter={(v) => `$${v}`} tick={{ fontSize: 11 }} stroke="#a3a29d" width={52} />
-          <Tooltip formatter={(v) => usd(Number(v))} labelFormatter={(d) => `Day ${d}`} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {Object.entries(PRODUCT_COLORS).map(([k, c]) => (
-            <Area key={k} type="monotone" dataKey={k} stackId="1" stroke="#fcfcfb" strokeWidth={2} fill={c} fillOpacity={0.9} isAnimationActive={false} />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
+      <div className="pane-head">
+        <h1>
+          {c.name ?? "Campaign"} <span className="ref">#{tid}</span>
+          <Chip tone={phase.tone}>{phase.label}</Chip>
+          {running && <Chip tone="live">{running.replace(/_/g, " ")} working</Chip>}
+        </h1>
+        <div className="meta">
+          Day {s.day} of {totalDays || "–"} · {usd(plan?.daily_budget ?? s.brief?.daily_budget)}/day · {decisions.length} agent steps
+        </div>
+        <div className="gloss">{phase.gloss}</div>
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          <span className="text-xs" style={{ color: "var(--muted)" }}>Advance the simulation by</span>
+          <DaysPicker value={runN} onChange={setRunN} presets={RUN_PRESETS} max={120} label="Days to run" />
+          <button className="btn btn-primary" disabled={!!busy || s.phase !== "running" || s.killed}
+            onClick={() => act("run", () => post(`/admin/controls${q}`, { action: "run_days", days: runN }))}>
+            {busy === "run" ? "Running…" : "Run"}
+          </button>
+          {s.killed
+            ? <button className="btn" disabled={!!busy} onClick={() => act("resume", () => post(`/admin/controls${q}`, { action: "resume" }))}>Resume</button>
+            : <button className="btn btn-danger" disabled={!!busy || s.phase !== "running"} onClick={() => act("kill", () => post(`/admin/controls${q}`, { action: "kill" }))}>Kill switch</button>}
+          {err && <span className="text-xs" style={{ color: "var(--critical)" }}>{err}</span>}
+        </div>
+      </div>
+
+      <Spread>
+        <Block title="Company">
+          <CompanyFacts c={c} />
+        </Block>
+        <Block title="Goal">
+          <p className="answer">{s.brief?.goal}</p>
+          {!plan && (
+            <p className="support">{s.phase === "error" ? "Planning failed: see the flow." : "The strategist is reading the goal…"}</p>
+          )}
+          {plan && (
+            <>
+              <p className="step-rationale mt-3" style={{ color: "var(--text-secondary)", maxWidth: "70ch" }}>
+                <b style={{ color: "var(--text-primary)", fontWeight: 600 }}>How the agents read it: </b>{plan.goal_interpretation}
+              </p>
+              <dl className="facts mt-3">
+                <dt>Products</dt><dd>{plan.products.join(", ")}</dd>
+                <dt>Audiences</dt><dd>{plan.audiences.join(", ")}</dd>
+                <dt>Geos</dt><dd>{plan.geos.join(", ")}</dd>
+                <dt>Channels</dt><dd>{plan.channels.join(", ")}</dd>
+                <dt>Budget</dt><dd>{usd(plan.daily_budget)}/day for {totalDays} days</dd>
+                {plan.kpi && <><dt>KPI</dt><dd>{plan.kpi}</dd></>}
+              </dl>
+            </>
+          )}
+        </Block>
+      </Spread>
+
+      <Spread>
+        <Block title="Agent map">
+          <AgentMap decisions={decisions} runningAgent={running} phase={s.phase} />
+        </Block>
+        <Block title="Flow · what each agent did and why">
+          <FollowScroll dep={`${decisions.length}:${running}`}>
+            <Trail decisions={decisions} runningAgent={running} />
+          </FollowScroll>
+        </Block>
+      </Spread>
+
+      {s.phase === "awaiting_approval" && <ApprovalQueue items={creatives} c={c} q={q} onDone={reload} />}
+
+      <Ads items={creatives} c={c} />
     </>
   );
 }
 
-function Posteriors({ rows }: { rows: any[] }) {
-  if (!rows.length) return <p className="text-sm text-neutral-500">No posteriors yet.</p>;
-  const max = Math.max(...rows.map((r) => r.mean + r.sd), 1);
+/** Scroll box that sticks to the newest step, unless the reader has scrolled up to read history. */
+function FollowScroll({ dep, children }: { dep: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [dep]);
   return (
-    <div className="max-h-[360px] overflow-auto">
-      <table>
-        <thead><tr><th>Arm (product | channel | audience | geo)</th><th style={{ width: "40%" }}>Value per $</th><th className="num">Budget today</th><th className="num">Spend to date</th></tr></thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.arm} title={`${r.arm}: ${r.mean.toFixed(2)} ± ${r.sd.toFixed(2)} value per $`}>
-              <td className="whitespace-nowrap">
-                <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: PRODUCT_COLORS[r.arm.split("|")[0]] }} />
-                {r.arm}{r.explore && <span className="ml-1 text-[10px] px-1 rounded bg-neutral-200">explore</span>}
-              </td>
-              <td>
-                <div className="relative h-3">
-                  <div className="absolute top-1 h-1 bg-neutral-300 rounded"
-                    style={{ left: `${(Math.max(r.mean - r.sd, 0) / max) * 100}%`, width: `${((r.mean + r.sd - Math.max(r.mean - r.sd, 0)) / max) * 100}%` }} />
-                  <div className="absolute top-0 h-3 w-1 rounded" style={{ left: `${(r.mean / max) * 100}%`, background: PRODUCT_COLORS[r.arm.split("|")[0]] }} />
-                </div>
-                <span className="text-xs text-neutral-600">{r.mean.toFixed(2)} ± {r.sd.toFixed(2)}</span>
-              </td>
-              <td className="num">{usd(r.budget)}</td>
-              <td className="num">{usd(r.spend)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div ref={ref} style={{ maxHeight: 720, overflowY: "auto", paddingRight: 6 }}
+      onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
+      {children}
     </div>
   );
 }
 
-function Guardrails({ policy, onSaved }: { policy: any; onSaved: () => void }) {
-  const fields = ["daily_budget", "explore_share", "max_shift", "arm_floor", "geo_floor"];
-  const [p, setP] = useState<any>(policy);
-  useEffect(() => setP(policy), [policy]);
+function CompanyFacts({ c }: { c: any }) {
+  if (!c?.name) return <p className="empty">No CRM record.</p>;
   return (
-    <div>
-      <div className="h">Guardrails (policy.yaml)</div>
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        {fields.map((f) => (
-          <label key={f} className="flex flex-col">
-            <span className="text-xs text-neutral-500">{f}</span>
-            <input className="border rounded px-2 py-0.5" type="number" step="any" value={p[f]}
-              onChange={(e) => setP({ ...p, [f]: Number(e.target.value) })} />
-          </label>
+    <>
+      <dl className="facts">
+        <dt>Type</dt><dd>{c.institution_type === "bank" ? "Bank" : "Credit union"}</dd>
+        <dt>Assets</dt><dd>${Number(c.assets_musd).toLocaleString()}M</dd>
+        <dt>Branches</dt><dd>{c.branches || "Online only"}</dd>
+        <dt>Region</dt><dd>{c.region}</dd>
+        <dt>Insurer</dt><dd>{c.insurer_disclosure}</dd>
+        <dt>Brand voice</dt><dd style={{ color: "var(--text-secondary)" }}>{c.brand_voice}</dd>
+      </dl>
+      <table className="mt-4">
+        <thead><tr><th>Product</th><th className="num">APY</th><th className="num">Min. balance</th><th className="num">Fee/mo</th></tr></thead>
+        <tbody>
+          {Object.entries(c.products ?? {}).map(([k, p]: [string, any]) => (
+            <tr key={k}><td>{p.name}</td><td className="num">{p.apy.toFixed(2)}%</td><td className="num">{usd(p.min_balance)}</td><td className="num">{usd(p.monthly_fee)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="support">Rates as of {c.rates_as_of} · read-only, from the CRM</p>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ ads
+function adProps(ad: Creative, c: any) {
+  const p = c.products?.[ad.product];
+  return { bank: c.name ?? "Bank", productName: p?.name, apy: p?.apy };
+}
+
+function ApprovalQueue({ items, c, q, onDone }: { items: Creative[]; c: any; q: string; onDone: () => void }) {
+  const queue = items.filter((x) => x.status === "pending_approval" || x.status === "failed_compliance");
+  const pending = queue.filter((x) => x.status === "pending_approval");
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  // Keyed on the ids themselves: two runs can have the same number of ads, and a count key
+  // would keep the previous run's selection (approving nothing, rejecting everything).
+  const pendingKey = pending.map((x) => x.id).join(",");
+  useEffect(() => {
+    setSel(new Set(pending.map((x) => x.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingKey]);
+
+  async function submit() {
+    setBusy(true);
+    try {
+      await post(`/admin/approvals${q}`, { approve: [...sel].filter((id) => pending.some((x) => x.id === id)), reject: pending.filter((x) => !sel.has(x.id)).map((x) => x.id) });
+    } finally { setBusy(false); onDone(); }
+  }
+
+  return (
+    <Block title={<>Approval queue <Chip tone="attention">{pending.length} passed compliance</Chip></>}
+      aside={<button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={busy} onClick={submit}>
+        {busy ? "Launching…" : `Approve ${sel.size} & launch`}</button>}>
+      <div className="ads-grid">
+        {queue.map((ad) => (
+          <AdPreview key={ad.id} ad={ad} {...adProps(ad, c)} select={
+            <label className="ad-select">
+              <input type="checkbox" disabled={ad.status !== "pending_approval"} checked={sel.has(ad.id)}
+                onChange={(e) => { const n = new Set(sel); e.target.checked ? n.add(ad.id) : n.delete(ad.id); setSel(n); }} />
+            </label>
+          } />
         ))}
       </div>
-      <button className="btn mt-2" onClick={async () => { await api("/admin/policy", { method: "PUT", body: JSON.stringify(p) }); onSaved(); }}>
-        Save guardrails
-      </button>
-    </div>
+    </Block>
+  );
+}
+
+function Ads({ items, c }: { items: Creative[]; c: any }) {
+  const approved = items.filter((x) => x.status === "approved");
+  const [tab, setTab] = useState<"approved" | "all">("approved");
+  const list = tab === "approved" ? approved : items;
+  return (
+    <Block title={<>Final ads <span style={{ fontWeight: 400 }}>{approved.length} approved · {items.length} written</span></>}
+      aside={
+        <span className="tabs">
+          <button aria-pressed={tab === "approved"} onClick={() => setTab("approved")}>Approved</button>
+          <button aria-pressed={tab === "all"} onClick={() => setTab("all")}>All</button>
+        </span>
+      }>
+      {list.length
+        ? <div className="ads-grid">{list.map((ad) => <AdPreview key={ad.id} ad={ad} {...adProps(ad, c)} />)}</div>
+        : <p className="empty">{items.length ? "No ads approved yet." : "The creative agent has not written any ads yet."}</p>}
+    </Block>
+  );
+}
+
+// ------------------------------------------------------------------ new campaign
+function NewCampaign({ customers, onStarted, onCancel }:
+  { customers: any[]; onStarted: (tid: number) => void; onCancel?: () => void }) {
+  const [cid, setCid] = useState<string>(customers[0]?.id ?? "");
+  const c = customers.find((x) => x.id === cid);
+  const [goal, setGoal] = useState("");
+  const [budget, setBudget] = useState<number>(c?.default_daily_budget ?? 2000);
+  const [days, setDays] = useState<number>((c?.default_weeks ?? 12) * 7);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function pick(id: string) {
+    setCid(id);
+    const n = customers.find((x) => x.id === id);
+    if (n) { setBudget(n.default_daily_budget); setDays(n.default_weeks * 7); }
+  }
+
+  async function start() {
+    if (goal.trim().length < 5) return setErr("Describe the goal in a sentence.");
+    setBusy(true); setErr("");
+    try {
+      const r = await post("/admin/campaigns/start", { customer_id: cid, goal, daily_budget: budget, days });
+      onStarted(r.tenant_id);
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  }
+
+  return (
+    <>
+      <div className="pane-head">
+        <h1>New campaign</h1>
+        <div className="gloss">Pick a customer and write the goal in a sentence. The agents plan the strategy, write the ads and check them for compliance; you approve before anything launches.</div>
+      </div>
+      <Spread>
+        <Block title="Company">
+          <label className="field mb-4">
+            <span>Customer (from CRM)</span>
+            <select className="input" value={cid} onChange={(e) => pick(e.target.value)}>
+              {customers.map((x) => (
+                <option key={x.id} value={x.id}>{x.name} · {x.institution_type === "bank" ? "Bank" : "Credit union"} · {x.region}</option>
+              ))}
+            </select>
+          </label>
+          {c && <CompanyFacts c={c} />}
+        </Block>
+        <Block title="Goal and budget">
+          <div className="flex flex-col gap-4">
+            <label className="field">
+              <span>Goal (the agents plan the strategy from this)</span>
+              <textarea className="input h-28" value={goal} onChange={(e) => setGoal(e.target.value)}
+                placeholder="e.g. Grow CD balances among retirees near our branches before rates drop" />
+            </label>
+            <div className="flex flex-wrap gap-6">
+              <label className="field">
+                <span>Daily budget ($)</span>
+                <input className="input w-36" type="number" min={1} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
+              </label>
+              <div className="field">
+                <span>Campaign length</span>
+                <DaysPicker key={cid} value={days} onChange={setDays} presets={LENGTH_PRESETS} max={365} label="Campaign length" />
+              </div>
+            </div>
+            {err && <p className="text-xs" style={{ color: "var(--critical)" }}>{err}</p>}
+            <div className="flex gap-2">
+              <button className="btn btn-primary" disabled={busy || !cid} onClick={start}>{busy ? "Starting…" : "Start campaign"}</button>
+              {onCancel && <button className="btn" onClick={onCancel}>Cancel</button>}
+            </div>
+          </div>
+        </Block>
+      </Spread>
+    </>
   );
 }

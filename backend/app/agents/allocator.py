@@ -74,8 +74,12 @@ def allocate(stats: dict[str, dict], prev: dict[str, float], policy: dict, rng) 
 
     theta = {k: max(rng.normal(post[k]["mean"], post[k]["sd"]), 0.0) for k in keys}
     top = sorted(keys, key=lambda k: theta[k], reverse=True)[:TOP_K]
-    tsum = sum(theta[k] for k in top) or 1.0
     explore = sorted((k for k in keys if k not in top), key=lambda k: post[k]["sd"], reverse=True)[:EXPLORE_K]
+    if not explore:  # narrow campaign (few arms): every arm is already sampled, no separate explore pool
+        exploit_budget += explore_budget
+    if sum(theta[k] for k in top) == 0:
+        theta = {k: 1.0 for k in keys}
+    tsum = sum(theta[k] for k in top)
 
     target = {k: floor for k in keys}
     for k in top:
@@ -89,6 +93,8 @@ def allocator(state: CycleState) -> dict:
     """Node: decide today's per-arm budgets."""
     tid, day = state["tenant_id"], state["day"]
     policy = settings.policy()
+    if state.get("plan"):  # the campaign's budget (admin form -> strategist), not the global default
+        policy["daily_budget"] = state["plan"]["daily_budget"]
     arms = db.arms(tid)
     stats = {a.key: {"spend": a.spend, "value": a.value, "sumsq": a.sumsq, "days": a.days} for a in arms}
     prev = state.get("allocation") or {}

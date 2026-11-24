@@ -3,7 +3,7 @@ campaign's budget inside the envelope the allocator set. Inside a campaign, bidd
 ad-set/asset-group spend is left to the platform (value-based bidding on our conversions)."""
 from sqlalchemy import select
 
-from .. import db, settings
+from .. import db
 from ..integrations import google, meta
 from ..state import CycleState
 
@@ -24,12 +24,14 @@ def media_launch(state: CycleState) -> dict:
     if not cells:
         return {"_log": {"reasoning": "No approved creatives; nothing launched."}}
     per_cell = plan["daily_budget"] / len(cells)
-    days = int(plan.get("weeks", 12)) * 7
-    name_of = settings.rates()["products"]
+    days = int(plan.get("days") or int(plan.get("weeks", 12)) * 7)
+    name_of = state["customer"]["products"]
+    bank = state["customer"]["name"]
+    audiences, geos = set(plan.get("audiences", [])), set(plan.get("geos", []))
 
     launched, calls = [], []
     for p, c in cells:
-        name = f"{name_of[p]['name']} | {c} | RAIN"
+        name = f"{bank} | {name_of[p]['name']} | {c}"
         res = google.create_campaign(name, per_cell) if c == "google" else meta.create_campaign(name, per_cell, days)
         calls.append({"cell": f"{p}/{c}", "mode": res["mode"], "id": res["id"], "error": res["error"],
                       "request": res["request"]})
@@ -37,11 +39,16 @@ def media_launch(state: CycleState) -> dict:
                                     status="live" if res["mode"] != "error" else "error", platform_id=res["id"]))
     db.add_all(launched)
     with db.session() as s:
+        active = 0
         for arm in s.scalars(select(db.Arm).where(db.Arm.tenant_id == tid)):
-            arm.active = (arm.product, arm.channel) in set(cells)
+            # The goal shapes execution here: only the planned audiences x geos get budget.
+            arm.active = ((arm.product, arm.channel) in set(cells)
+                          and (not audiences or arm.audience in audiences) and (not geos or arm.geo in geos))
+            active += arm.active
     campaigns = [{"id": x.id, "product": x.product, "channel": x.channel, "platform_id": x.platform_id} for x in launched]
     return {"campaigns": campaigns,
-            "_log": {"inputs": {"cells": [f"{p}/{c}" for p, c in cells], "daily_budget": plan["daily_budget"]},
+            "_log": {"inputs": {"cells": [f"{p}/{c}" for p, c in cells], "daily_budget": plan["daily_budget"],
+                                "audiences": sorted(audiences), "geos": sorted(geos), "active_arms": active},
                      "output": {"calls": calls},
                      "reasoning": f"Created {len(campaigns)} campaigns (1 per product x channel). Google: Maximize "
                                   "conversion value; Meta: Advantage+ campaign budget with lifetime_budget."}}
@@ -51,7 +58,8 @@ def media_update(state: CycleState) -> dict:
     """Node: push today's envelopes to the platforms (only when they move > 2%)."""
     tid, alloc = state["tenant_id"], state["allocation"]
     env = _envelopes(alloc)
-    days_left = max(int(state.get("plan", {}).get("weeks", 12)) * 7 - state["day"], 1)
+    plan = state.get("plan", {})
+    days_left = max(int(plan.get("days") or int(plan.get("weeks", 12)) * 7) - state["day"], 1)
     changes = []
     with db.session() as s:
         for camp in s.scalars(select(db.Campaign).where(db.Campaign.tenant_id == tid, db.Campaign.status == "live")):

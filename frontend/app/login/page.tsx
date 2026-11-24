@@ -30,7 +30,7 @@ export default function Login() {
         {err && <p className="text-sm text-red-700">{err}</p>}
         <button className="btn btn-primary w-full">Sign in</button>
         <p className="text-xs text-neutral-500">
-          Demo: admin@rain / admin (RAIN staff) · client@lacap / client (La Cap, read-only)
+          Demo: admin@rain / admin (RAIN staff) · client@acme / client (Acme Community Credit Union, read-only)
         </p>
       </form>
     </main>

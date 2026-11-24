@@ -13,7 +13,8 @@ from typing import Any, TypedDict
 class CycleState(TypedDict, total=False):
     tenant_id: int
     day: int                      # simulated day (0-based)
-    brief: dict                   # client brief
+    customer: dict                # CRM snapshot (rates, products, disclosures) taken at campaign start
+    brief: dict                   # admin goal + budget + customer basics
     lessons: list[str]            # memory from reflection
     plan: dict                    # strategist output
     creatives: list[dict]         # creative output (+ compliance findings)
