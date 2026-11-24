@@ -1,6 +1,9 @@
 """FastAPI app: auth, admin + client APIs, SSE stream, optional auto-tick."""
 import asyncio
 import json
+import signal
+import sys
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -14,8 +17,35 @@ from sqlalchemy import func, select
 from . import crm, db, integrations, orchestrator, settings
 
 
+# Set when the server is asked to stop. Open SSE streams watch it and end themselves: uvicorn's
+# graceful shutdown waits for every connection to close, and on Python 3.12 even a forced second
+# Ctrl+C still blocks in server.wait_closed() while a stream is open, so the process never exits.
+SHUTDOWN = threading.Event()
+
+
+def _watch_shutdown_signals() -> None:
+    """Chain onto the server's signal handlers (installed before the app starts) without replacing them."""
+    sigs = [signal.SIGINT, signal.SIGTERM] + ([signal.SIGBREAK] if sys.platform == "win32" else [])
+    for sig in sigs:
+        prev = signal.getsignal(sig)
+
+        def handler(num, frame, prev=prev):
+            SHUTDOWN.set()
+            if callable(prev):
+                prev(num, frame)
+            elif num == signal.SIGINT:
+                raise KeyboardInterrupt
+
+        try:
+            signal.signal(sig, handler)
+        except ValueError:
+            return  # not the main thread (e.g. TestClient): nothing to chain onto
+
+
 @asynccontextmanager
 async def lifespan(_app):
+    SHUTDOWN.clear()
+    _watch_shutdown_signals()
     db.init_db()
     task = asyncio.create_task(_ticker()) if settings.TICK_SECONDS > 0 else None
     yield
@@ -95,12 +125,17 @@ async def stream(token: str, tenant_id: int = 0):
     async def gen():
         try:
             yield "event: hello\ndata: {}\n\n"
-            while True:
+            idle = 0
+            while not SHUTDOWN.is_set():  # end the stream on shutdown so the server can exit
                 try:
-                    ev = await asyncio.wait_for(q.get(), timeout=15)
+                    ev = await asyncio.wait_for(q.get(), timeout=1)
                 except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
+                    idle += 1
+                    if idle >= 15:
+                        idle = 0
+                        yield ": keepalive\n\n"
                     continue
+                idle = 0
                 if ev.get("tenant_id") == tid:
                     if u["role"] == "client" and ev["type"] == "decision":
                         continue  # clients see results, not internal agent reasoning
