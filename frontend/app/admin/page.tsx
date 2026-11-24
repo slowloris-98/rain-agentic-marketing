@@ -4,6 +4,7 @@ import { post, usd, useLive } from "@/lib/api";
 import { AdPreview, type Creative } from "@/components/AdPreview";
 import { AgentMap } from "@/components/AgentMap";
 import { Trail, type Decision } from "@/components/Trail";
+import { agentLabel } from "@/components/stages";
 import { Block, Chip, DaysPicker, Spread, readPhase } from "@/components/ui";
 
 type Data = { state: any; decisions: Decision[]; approvals: Creative[]; tenants: any[]; customers: any[] };
@@ -40,7 +41,9 @@ export default function Admin() {
         <span className="spacer" />
         {s && (
           <span className="health">
-            <Chip tone={s.llm ? "good" : "neutral"}>{s.llm ? "LLM on" : "Template mode"}</Chip>
+            <Chip tone={s.llm ? "good" : "neutral"} title="Which LLM the agents use (LLM_PROVIDER / API keys in backend/.env)">
+              {s.llm === "openai" ? "OpenAI" : s.llm ? "Claude" : "Template mode"}
+            </Chip>
             <Chip tone={s.integrations.google === "live" ? "good" : "neutral"}>Google {s.integrations.google}</Chip>
             <Chip tone={s.integrations.meta === "live" ? "good" : "neutral"}>Meta {s.integrations.meta}</Chip>
           </span>
@@ -126,7 +129,7 @@ function RunView({ tid, s, decisions, creatives, q, reload }:
         <h1>
           {c.name ?? "Campaign"} <span className="ref">#{tid}</span>
           <Chip tone={phase.tone}>{phase.label}</Chip>
-          {running && <Chip tone="live">{running.replace(/_/g, " ")} working</Chip>}
+          {running && <Chip tone="live">{agentLabel(running)} working</Chip>}
         </h1>
         <div className="meta">
           Day {s.day} of {totalDays || "–"} · {usd(plan?.daily_budget ?? s.brief?.daily_budget)}/day · {decisions.length} agent steps

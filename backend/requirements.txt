@@ -5,6 +5,7 @@ pyyaml>=6
 numpy>=1.26
 pyjwt>=2.8
 anthropic>=0.70
+openai>=1.40
 # Ad platform SDKs (only used when credentials are present; stubs otherwise)
 google-ads>=28
 facebook-business>=21

@@ -167,7 +167,8 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top
   content: ""; position: absolute; left: -6px; top: 4px; width: 10px; height: 10px; border-radius: 50%;
   background: var(--dot, var(--series-1)); border: 2px solid var(--surface-1);
 }
-.trail li.human::before { background: var(--text-primary); }
+.trail li.kind-platform::before { border-radius: 2px; }
+.trail li.kind-human::before { border-radius: 1px; transform: rotate(45deg); }
 .trail li.terminal::before { background: var(--serious); }
 .trail li.running::before { animation: breathe 1.4s var(--ease) infinite; }
 .trail .step-agent { font-weight: 600; font-size: 13px; }
@@ -185,9 +186,6 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top
 .map-stage {
   --map-ground: oklch(15% 0.014 265);
   --map-ground-deep: oklch(10% 0.012 265);
-  --map-core: oklch(96% 0.02 250);
-  --map-core-ring: oklch(88% 0.04 250);
-  --map-label: oklch(93% 0.008 250);
   --map-label-agent: oklch(85% 0.008 250);
   --map-star: oklch(99% 0 0);
   --map-star-alt: oklch(88% 0.03 250);
@@ -200,11 +198,18 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top
 .map-starfield { pointer-events: none; }
 .map-stars circle { fill: var(--map-star); }
 .map-stars-b circle { fill: var(--map-star-alt); }
-.map-structural line { stroke: oklch(70% 0.12 var(--hue)); }
-.map-structural line.trunk { stroke-width: 2.5; opacity: 0.55; }
-.map-structural line.branch { stroke-width: 1.75; opacity: 0.42; }
-.map-flow path { fill: none; stroke: oklch(78% 0.15 var(--hue)); stroke-width: 1.75px; stroke-linecap: round; opacity: 0.4; }
-.map-flow path.hot { opacity: 1; stroke-width: 3px; }
+/* The straight line of steps: faint until a handoff has happened on that segment. */
+.map-line line { stroke: oklch(70% 0.12 var(--hue)); stroke-width: 2; opacity: 0.18; transition: opacity var(--fast) var(--ease); }
+.map-line line.used { opacity: 0.6; }
+.map-line line.hot { opacity: 1; stroke-width: 3; }
+/* Return arcs that close the loops (platform feedback -> allocator, weekly review -> next week). */
+.map-loop path { fill: none; stroke: oklch(75% 0.13 var(--hue)); stroke-width: 2; stroke-dasharray: 6 7; opacity: 0.22; }
+.map-loop text { fill: var(--map-label-agent); font-size: 19px; letter-spacing: 0.04em; opacity: 0.35; }
+.map-loop .used path { opacity: 0.6; }
+.map-loop .used text { opacity: 0.8; }
+.map-loop .hot path { opacity: 1; stroke-width: 3; stroke-dasharray: none; }
+.map-loop .hot text { opacity: 1; fill: oklch(92% 0.09 var(--hue)); }
+.map-arrow { fill: oklch(82% 0.05 250); }
 .map-flow-dots circle {
   fill: oklch(92% 0.16 var(--hue)); transform-box: view-box;
   animation-name: map-travel; animation-timing-function: linear; animation-iteration-count: 1; animation-fill-mode: forwards;
@@ -214,18 +219,8 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top
   12%, 88% { opacity: 0.95; }
   to { transform: translate(var(--x2), var(--y2)); opacity: 0; }
 }
-.map-core .halo { fill: url(#rain-core-halo); }
-.map-core .core { fill: var(--map-core); }
-.map-core .ring { fill: none; stroke: var(--map-core-ring); stroke-width: 1; opacity: 0.5; }
-.map-core.live .core { animation: map-pulse-core 2.2s var(--ease) infinite; }
-.map-halo .halo-in { stop-color: oklch(92% 0.03 250); stop-opacity: 0.8; }
-.map-halo .halo-mid { stop-color: oklch(80% 0.06 250); stop-opacity: 0.2; }
-.map-halo .halo-out { stop-color: oklch(70% 0.08 250); stop-opacity: 0; }
-.map-hub, .map-node { transition: opacity var(--fast) var(--ease); }
-.map-hub.dimmed, .map-node.dimmed { opacity: 0.22; }
-.map-hub .hub { fill: oklch(72% 0.16 var(--hue)); }
-.map-hub .ring { fill: none; stroke: oklch(70% 0.14 var(--hue)); stroke-width: 1; opacity: 0.75; }
-.map-hub.live .hub { animation: map-pulse-core 2.2s var(--ease) infinite; }
+.map-node { transition: opacity var(--fast) var(--ease); }
+.map-node.dimmed { opacity: 0.25; }
 .map-node .node { fill: oklch(74% 0.15 var(--hue)); opacity: 0.85; }
 .map-node.live .node { fill: oklch(88% 0.15 var(--hue)); opacity: 1; }
 .map-node .pulse {
@@ -233,19 +228,19 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top
   animation: map-pulse 2.2s var(--ease) infinite;
 }
 @keyframes map-pulse { 0%, 100% { transform: scale(0.55); opacity: 0.8; } 50% { transform: scale(1); opacity: 0.1; } }
-@keyframes map-pulse-core { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .map-labels { position: absolute; inset: 0; pointer-events: none; }
 .map-labels > div { position: absolute; white-space: nowrap; transition: opacity var(--fast) var(--ease); }
-.map-dept-label { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--map-label); }
-.map-dept-label.dimmed { opacity: 0.3; }
-.map-agent-label { font-size: 11px; letter-spacing: 0.02em; color: var(--map-label-agent); opacity: 0.35; }
+.map-agent-label { font-size: 12px; letter-spacing: 0.02em; color: var(--map-label-agent); opacity: 0.35; }
 .map-agent-label.shown { opacity: 1; }
 .map-agent-label.live { color: oklch(92% 0.09 var(--hue, 250)); font-weight: 600; }
+.map-legend { display: flex; gap: 14px; font-size: 11px; color: var(--map-label-agent); }
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.map-legend svg { fill: oklch(80% 0.05 250); }
 .map-readout {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 14px; font-size: 12px;
   color: var(--map-label-agent); border-top: 1px solid oklch(30% 0.01 265); background: oklch(12% 0.012 265 / 0.7);
 }
-.map-readout b { color: var(--map-label); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
+.map-readout b { color: oklch(93% 0.008 250); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
 
 /* ------------------------------------------------------------- ad previews */
 .ads-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }

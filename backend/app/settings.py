@@ -25,6 +25,18 @@ DATABASE_URL = env("DATABASE_URL", "sqlite:///./rain.db")
 JWT_SECRET = env("JWT_SECRET", "dev-secret-change-me-in-production-0001")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
 LLM_MODEL = env("LLM_MODEL", "claude-opus-5-5")
+OPENAI_API_KEY = env("OPENAI_API_KEY")
+OPENAI_MODEL = env("OPENAI_MODEL", "gpt-4.1")
+LLM_PROVIDER = env("LLM_PROVIDER", "").strip().lower()  # anthropic | openai | empty = auto
+
+
+def llm_provider() -> str | None:
+    """Which LLM the agents use: the one LLM_PROVIDER names (if its key is set), otherwise the
+    first provider with a key. None = no key, agents use their deterministic templates."""
+    keys = {"anthropic": ANTHROPIC_API_KEY, "openai": OPENAI_API_KEY}
+    if LLM_PROVIDER in keys:
+        return LLM_PROVIDER if keys[LLM_PROVIDER] else None
+    return next((p for p, k in keys.items() if k), None)
 TICK_SECONDS = float(env("TICK_SECONDS", "0"))
 
 # Demo users. Replace with a users table when real auth is needed.

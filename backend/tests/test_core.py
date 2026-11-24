@@ -172,3 +172,20 @@ def test_full_cycle_and_client_scoping():
                         headers=admin).json()["tenant_id"]
         assert c.get(f"/client/kpis?tenant_id={summit}", headers=client).json()["tenant_id"] == tid2
         assert c.get("/admin/decisions", headers=client).status_code == 403
+
+
+def test_llm_provider_selection(monkeypatch):
+    from app import llm, settings as st
+    monkeypatch.setattr(st, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(st, "OPENAI_API_KEY", "")
+    for want in ("", "openai", "anthropic"):
+        monkeypatch.setattr(st, "LLM_PROVIDER", want)
+        assert st.llm_provider() is None  # no keys -> templates
+    assert llm.call("t", "s", "p", llm.obj({"x": {"type": "string"}}), lambda: {"x": "tpl"}) == ({"x": "tpl"}, "template")
+    monkeypatch.setattr(st, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(st, "LLM_PROVIDER", "")
+    assert st.llm_provider() == "openai"  # auto: the only key present
+    monkeypatch.setattr(st, "ANTHROPIC_API_KEY", "ak-test")
+    assert st.llm_provider() == "anthropic"  # auto prefers Anthropic when both are set
+    monkeypatch.setattr(st, "LLM_PROVIDER", "openai")
+    assert st.llm_provider() == "openai"  # explicit choice wins

@@ -205,7 +205,7 @@ def admin_state(tid: int = Depends(tenant), _=Depends(admin)):
     return {"day": rs.day, "phase": rs.phase, "killed": rs.killed, "paused_agents": rs.paused_agents,
             "agents": orchestrator.AGENTS, "running_agent": orchestrator.CURRENT.get(tid), "plan": st.get("plan"), "brief": st.get("brief"),
             "customer": st.get("customer"), "mode": settings.MODE,
-            "llm": bool(settings.ANTHROPIC_API_KEY),
+            "llm": settings.llm_provider(),
             "integrations": {"google": "live" if integrations.google.configured else "stub",
                              "meta": "live" if integrations.meta.configured else "stub"}}
 

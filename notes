@@ -1,11 +1,9 @@
 todo:
 
-- use a stub bank name not a real one
-- show the agent flow similar to as we have in nexusgtm
-- keep the admin dashboard minimal, currently it has a lot for knobs
-- add open ai and creative agent should be able to generate the image ads as well.
-- add option to write a brief goal and bank details in admin portal and then start the flow which can be monitored live.
-- The customer data like apr etc should be read from a source file.
+- creative agent should be able to generate the image ads as well for social media.
+- agents should decide which medium (tv, insta, youtube) to use for ad as well.
+- move the approval setup above as it is too low on the page, user might miss it.
+
 
 
 questions:
