@@ -1,0 +1,7 @@
+daily_budget: 2000          # total $/day across all arms
+explore_share: 0.15         # share of budget reserved for exploration
+max_shift: 0.30             # max fraction of total budget that may move per cycle
+arm_floor: 5                # min $/day per active arm
+geo_floor: 0.25             # min share of budget for each geo (fair-lending distribution)
+no_age_targeting_products: [credit_card, auto_loan, heloc]   # credit products: no age bands
+banned_claims: [best, lowest, highest, guaranteed, "risk-free", "#1", "no risk"]

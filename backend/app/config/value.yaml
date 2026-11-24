@@ -1,0 +1,9 @@
+# value = balance x monthly_margin[product] x expected_tenure_months x (dd_multiplier if direct deposit)
+formula_version: 1
+monthly_margin:
+  checking: 0.0030
+  savings: 0.0012
+  cd: 0.0008
+  money_market: 0.0015
+direct_deposit_multiplier: 1.5
+currency: USD

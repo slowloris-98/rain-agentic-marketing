@@ -1,0 +1,23 @@
+{
+  "as_of": "2026-11-01",
+  "institution": "La Cap Federal Credit Union",
+  "products": {
+    "checking": {
+      "name": "Rewards Checking", "apy": 0.50, "min_balance": 0, "monthly_fee": 0,
+      "extra": "Rate may change after account is opened."
+    },
+    "savings": {
+      "name": "High-Yield Savings", "apy": 4.10, "min_balance": 100, "monthly_fee": 0,
+      "extra": "Rate is variable and may change after account is opened."
+    },
+    "cd": {
+      "name": "12-Month Certificate", "apy": 4.35, "min_balance": 1000, "monthly_fee": 0,
+      "extra": "Penalty may be imposed for early withdrawal."
+    },
+    "money_market": {
+      "name": "Money Market", "apy": 3.75, "min_balance": 2500, "monthly_fee": 10,
+      "extra": "Fee waived with $2,500 average daily balance. Rate is variable."
+    }
+  },
+  "disclosure_template": "APY = Annual Percentage Yield. {apy}% APY accurate as of {as_of}. Minimum balance to open: ${min_balance}. Monthly fee: ${monthly_fee}. {extra} Federally insured by NCUA."
+}
