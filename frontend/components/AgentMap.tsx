@@ -71,6 +71,9 @@ const hopSeconds = (len: number) => Math.min(1.8, Math.max(0.6, len / DOT_SPEED)
 export function AgentMap({ decisions, runningAgent, phase }:
   { decisions: { id: number; agent: string }[]; runningAgent: string | null; phase?: string }) {
   const stars = useMemo(() => starfield(360), []);
+  // The backend logs human_approval only after approval, so while the run waits, show that step as the active one.
+  const waiting = !runningAgent && phase === "awaiting_approval" ? "human_approval" : null;
+  const active = runningAgent ?? waiting;
 
   // Route = the decision log oldest-first, restricted to steps on the line, repeats folded.
   const path = useMemo(() => {
@@ -79,9 +82,9 @@ export function AgentMap({ decisions, runningAgent, phase }:
       if (idx(d.agent) < 0) continue;
       if (out[out.length - 1] !== d.agent) out.push(d.agent);
     }
-    if (runningAgent && idx(runningAgent) >= 0 && out[out.length - 1] !== runningAgent) out.push(runningAgent);
+    if (active && idx(active) >= 0 && out[out.length - 1] !== active) out.push(active);
     return out;
-  }, [decisions, runningAgent]);
+  }, [decisions, active]);
 
   const touched = useMemo(() => new Set(path), [path]);
   const hops = useMemo(() => path.slice(1).map((b, i) => ({ id: `${path[i]}->${b}`, a: path[i], b })), [path]);
@@ -109,6 +112,8 @@ export function AgentMap({ decisions, runningAgent, phase }:
 
   const readout = runningAgent
     ? <><b>1 step working</b> · {agentLabel(runningAgent)}{kindOf(runningAgent) === "agent" ? "" : ` (${KIND_LABEL[kindOf(runningAgent)].toLowerCase()})`}</>
+    : waiting
+      ? <><b>Waiting on a human</b> · approve the ads to launch the campaigns</>
     : phase === "planning"
       ? <><b>Starting</b> · the Strategist Agent is about to read the goal</>
       : <><b>Nothing working</b> · {hops.length ? `${hops.length} handoffs so far. Lit steps have run; dim ones have not yet.` : "Nothing has run yet."}</>;
@@ -178,7 +183,7 @@ export function AgentMap({ decisions, runningAgent, phase }:
           </g>
 
           {ORDER.map((a) => {
-            const p = at(a), live = a === runningAgent;
+            const p = at(a), live = a === active;
             return (
               <g key={a} style={hueVar(agentHue(a))}
                 className={`map-node${live ? " live" : ""}${touched.has(a) ? "" : " dimmed"}`}>
@@ -199,7 +204,7 @@ export function AgentMap({ decisions, runningAgent, phase }:
             const p = at(a);
             return (
               <div key={a} style={{ ...hueVar(agentHue(a)), left: pct(p.x + 30), top: pct(p.y), transform: "translate(0, -50%)" }}
-                className={`map-agent-label${touched.has(a) ? " shown" : ""}${a === runningAgent ? " live" : ""}`}>
+                className={`map-agent-label${touched.has(a) ? " shown" : ""}${a === active ? " live" : ""}`}>
                 {agentLabel(a)}
               </div>
             );

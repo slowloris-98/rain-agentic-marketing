@@ -7,10 +7,10 @@ export function Chip({ tone, children, title }: { tone: Tone; children: ReactNod
   return <span className={`chip ${tone}`} title={title}>{children}</span>;
 }
 
-export function Block({ title, aside, children, className = "" }:
-  { title: ReactNode; aside?: ReactNode; children: ReactNode; className?: string }) {
+export function Block({ title, aside, children, className = "", id }:
+  { title: ReactNode; aside?: ReactNode; children: ReactNode; className?: string; id?: string }) {
   return (
-    <section className={`block ${className}`}>
+    <section id={id} className={`block ${className}`}>
       <h2>{title}{aside}</h2>
       {children}
     </section>
@@ -30,7 +30,7 @@ export function readPhase(phase: string | undefined, killed = false): { label: s
     case "awaiting_approval":
       return { label: "Needs approval", tone: "attention", gloss: "Ads passed compliance and are waiting for a human to approve them before anything launches." };
     case "running":
-      return { label: "Running", tone: "live", gloss: "Campaigns are live. Each simulated day the allocator moves budget toward what is working." };
+      return { label: "Running", tone: "live", gloss: "Campaigns are live. Each day the allocator moves budget toward what is working." };
     case "idle":
       return { label: "Idle", tone: "neutral", gloss: "Nothing was approved, so no campaigns launched." };
     case "error":

@@ -35,7 +35,7 @@ export function Trail({ decisions, runningAgent }: { decisions: Decision[]; runn
                 <span>{agentLabel(d.agent)}</span>{" "}
                 <span className="dept">· {stage}</span>
               </div>
-              <div className="step-rationale">{d.reasoning || "No reasoning recorded."}</div>
+              <div className="step-rationale">{d.reasoning?.replace(/^\[(llm|template)\]\s*/, "") || "No reasoning recorded."}</div>
               <details>
                 <summary>
                   {new Date(d.ts + (d.ts.endsWith("Z") ? "" : "Z")).toLocaleTimeString()} · show input and output

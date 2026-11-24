@@ -9,7 +9,6 @@ import { Block, Chip, DaysPicker, Spread, readPhase } from "@/components/ui";
 
 type Data = { state: any; decisions: Decision[]; approvals: Creative[]; tenants: any[]; customers: any[] };
 
-const RUN_PRESETS = [1, 7, 30, 84];
 const LENGTH_PRESETS = [7, 14, 30, 56, 60, 84, 90]; // 56/84 = the CRM's 8- and 12-week defaults
 
 export default function Admin() {
@@ -41,9 +40,6 @@ export default function Admin() {
         <span className="spacer" />
         {s && (
           <span className="health">
-            <Chip tone={s.llm ? "good" : "neutral"} title="Which LLM the agents use (LLM_PROVIDER / API keys in backend/.env)">
-              {s.llm === "openai" ? "OpenAI" : s.llm ? "Claude" : "Template mode"}
-            </Chip>
             <Chip tone={s.integrations.google === "live" ? "good" : "neutral"}>Google {s.integrations.google}</Chip>
             <Chip tone={s.integrations.meta === "live" ? "good" : "neutral"}>Meta {s.integrations.meta}</Chip>
           </span>
@@ -109,7 +105,6 @@ function Rail({ tenants, tid, onPick, onNew }: { tenants: any[]; tid: number; on
 function RunView({ tid, s, decisions, creatives, q, reload }:
   { tid: number; s: any; decisions: Decision[]; creatives: Creative[]; q: string; reload: () => void }) {
   const [busy, setBusy] = useState("");
-  const [runN, setRunN] = useState(7);
   const [err, setErr] = useState("");
   const phase = readPhase(s.phase, s.killed);
   const c = s.customer ?? {};
@@ -128,7 +123,12 @@ function RunView({ tid, s, decisions, creatives, q, reload }:
       <div className="pane-head">
         <h1>
           {c.name ?? "Campaign"} <span className="ref">#{tid}</span>
-          <Chip tone={phase.tone}>{phase.label}</Chip>
+          {s.phase === "awaiting_approval" && !s.killed
+            ? <button className={`chip ${phase.tone}`} style={{ cursor: "pointer" }} title="Go to the approval queue"
+                onClick={() => document.getElementById("approval-queue")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                {phase.label} ↓
+              </button>
+            : <Chip tone={phase.tone}>{phase.label}</Chip>}
           {running && <Chip tone="live">{agentLabel(running)} working</Chip>}
         </h1>
         <div className="meta">
@@ -136,12 +136,6 @@ function RunView({ tid, s, decisions, creatives, q, reload }:
         </div>
         <div className="gloss">{phase.gloss}</div>
         <div className="flex flex-wrap items-center gap-2 mt-4">
-          <span className="text-xs" style={{ color: "var(--muted)" }}>Advance the simulation by</span>
-          <DaysPicker value={runN} onChange={setRunN} presets={RUN_PRESETS} max={120} label="Days to run" />
-          <button className="btn btn-primary" disabled={!!busy || s.phase !== "running" || s.killed}
-            onClick={() => act("run", () => post(`/admin/controls${q}`, { action: "run_days", days: runN }))}>
-            {busy === "run" ? "Running…" : "Run"}
-          </button>
           {s.killed
             ? <button className="btn" disabled={!!busy} onClick={() => act("resume", () => post(`/admin/controls${q}`, { action: "resume" }))}>Resume</button>
             : <button className="btn btn-danger" disabled={!!busy || s.phase !== "running"} onClick={() => act("kill", () => post(`/admin/controls${q}`, { action: "kill" }))}>Kill switch</button>}
@@ -150,9 +144,6 @@ function RunView({ tid, s, decisions, creatives, q, reload }:
       </div>
 
       <Spread>
-        <Block title="Company">
-          <CompanyFacts c={c} />
-        </Block>
         <Block title="Goal">
           <p className="answer">{s.brief?.goal}</p>
           {!plan && (
@@ -160,7 +151,7 @@ function RunView({ tid, s, decisions, creatives, q, reload }:
           )}
           {plan && (
             <>
-              <p className="step-rationale mt-3" style={{ color: "var(--text-secondary)", maxWidth: "70ch" }}>
+              <p className="step-rationale mt-3" style={{ color: "var(--text-secondary)" }}>
                 <b style={{ color: "var(--text-primary)", fontWeight: 600 }}>How the agents read it: </b>{plan.goal_interpretation}
               </p>
               <dl className="facts mt-3">
@@ -173,6 +164,9 @@ function RunView({ tid, s, decisions, creatives, q, reload }:
               </dl>
             </>
           )}
+        </Block>
+        <Block title="Company">
+          <CompanyFacts c={c} />
         </Block>
       </Spread>
 
@@ -262,7 +256,7 @@ function ApprovalQueue({ items, c, q, onDone }: { items: Creative[]; c: any; q: 
   }
 
   return (
-    <Block title={<>Approval queue <Chip tone="attention">{pending.length} passed compliance</Chip></>}
+    <Block id="approval-queue" title={<>Approval queue <Chip tone="attention">{pending.length} passed compliance</Chip></>}
       aside={<button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={busy} onClick={submit}>
         {busy ? "Launching…" : `Approve ${sel.size} & launch`}</button>}>
       <div className="ads-grid">

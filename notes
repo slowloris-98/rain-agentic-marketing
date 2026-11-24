@@ -3,10 +3,20 @@ todo:
 - creative agent should be able to generate the image ads as well for social media.
 - agents should decide which medium (tv, insta, youtube) to use for ad as well.
 - move the approval setup above as it is too low on the page, user might miss it.
+- reduce texual verbose, difficult to understand reasoning.
+- enable auto tick
+- accordian for more details about the account instead of showing everything together. Only show Company name, and goal on the left side. Do not talk that this is a simulation etc. Hide the simulation options to give the real feel of the dashboard.
 
 
+- Switch the Goal and Company sections with each other. Remove the simulation buttons and lines completely, we want to give real feel of the dashboard. Use a recommended tick_seconds value which feel real.
+- When ads needs approval the needs attention should be a clickable button that scrolls to the ads section.
+- remove llm tag / template tags we need to give a real feel of the dashboard in the demo.
+- The agents not currently active should be dim.
+- Kill switch should be active even throughout the run.
+- Show the three sections of signal layer, decision layer and the execution layer as dotted lines.
 
 questions:
 
-- does rain have the actual account details like balance and geographic info from the banks?
-- how does rain know if a campaign worked correctly apart from the analytics from ad platforms. Does the client share that data from there end?
+- does rain have the actual account details like current balance approximates and geographic info from the banks? Old and historic data?
+- how does rain know if a campaign worked correctly apart from the analytics from ad platforms. Does the client share that data from there end? Are there any metrics like application per dollar spent? How is success defined?
+- 
